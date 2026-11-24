@@ -72,6 +72,7 @@ function spawnNPCs() {
   const r = mulberry32(99);
   names.forEach(([id, nm, fem], i) => {
     const sp = { fem, skin: SKINS[Math.floor(r() * SKINS.length)], hairCol: HAIRS[Math.floor(r() * 6)], hair: fem ? ['long', 'bob', 'ponytail', 'bun', 'curly'][i % 5] : ['short', 'buzz', 'curly', 'short'][i % 4], outfit: fem ? (i % 3 === 0 ? 'hoodie' : 'uniformF') : (i % 3 === 1 ? 'hoodie' : 'uniformM'), accent: i % 3 === 0 || i % 3 === 1 ? pick(['#5a5c60', '#2f4a36', '#5a4a6e', '#7e1d20']) : null, height: .96 + r() * .08, eye: '#3a2a1e' };
+    sp.real = id; // realistic body once assets/people/<id>.glb has loaded
     const n = new NPC(id, { name: nm, role: 'Student', spec: sp }, { wander: true });
     const w = WANDER[(i * 3) % WANDER.length]; n.place(w[0], w[1], r() * TAU);
   });

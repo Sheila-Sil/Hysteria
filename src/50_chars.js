@@ -116,7 +116,7 @@ class Character {
     }
     if (o.skirt) { this.skirt = add(B.hips, GEO.skirt, o.skirt, 0, .02, 0); this.skirt.scale.set(1.05, 1, .85); }
     if (o.robe) { this.robe = add(B.hips, GEO.robe, o.robe, 0, .02, 0); this.robe.scale.set(1.05, 1, .85); }
-    this.root.scale.setScalar(spec.height * (fem ? 1 : 1.06));
+    this.baseScale = spec.height * (fem ? 1 : 1.06); this.root.scale.setScalar(this.baseScale);
     this.root.traverse(m => { if (m.isMesh) m.userData.char = this; });
   }
   buildHair(head, m, style, ghost) {
@@ -227,3 +227,4 @@ const CAST = {
   nora: { name: 'Nora', role: 'Lions dancer, sophomore', spec: { fem: true, skin: '#e8bfa0', hair: 'bun', hairCol: '#5a3a22', outfit: 'lions', eye: '#3a4a2a' } },
   ghost: { name: '???', role: '', spec: { fem: true, skin: '#aaa', hair: 'long', hairCol: '#0c0c0e', outfit: 'ghost', height: 1.0 } }
 };
+for (const [id, c] of Object.entries(CAST)) c.spec.real = id;

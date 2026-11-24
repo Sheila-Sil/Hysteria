@@ -66,7 +66,7 @@ function retargetClip(srcScene, dstScene, clip, fps = 30) {
   return new THREE.AnimationClip(clip.name, clip.duration, tracks);
 }
 async function loadAssets(onProgress) {
-  let done = 0; const total = 13; const tick = () => { done++; ASSETS.progress = done / total; onProgress && onProgress(ASSETS.progress); };
+  let done = 0; const total = 13 + 2 + PEOPLE_IDS.length; const tick = () => { done++; ASSETS.progress = done / total; onProgress && onProgress(ASSETS.progress); };
   const T = (n, s) => loadTex(n, s).then(t => { tick(); return t; });
   // textures
   const [bd, bb, br, wd, wb, wr, gd, gn, wn] = await Promise.all([T('brick_diffuse.jpg'), T('brick_bump.jpg', false), T('brick_roughness.jpg', false), T('hardwood2_diffuse.jpg'), T('hardwood2_bump.jpg', false), T('hardwood2_roughness.jpg', false), T('grasslight-big.jpg'), T('grasslight-big-nm.jpg', false), T('waternormals.jpg', false)]);
@@ -81,7 +81,9 @@ async function loadAssets(onProgress) {
   // skies
   const [eDay, eDusk, eNight] = await Promise.all(['sky_day.jpg', 'sky_dusk.jpg', 'sky_night.jpg'].map(n => loadHDR(n).then(t => { tick(); return t; })));
   Object.assign(ASSETS.env, { day: eDay, dusk: eDusk, night: eNight }); ASSETS.envKey = null;
-  // animation library (Mixamo rig) + photoreal model
+  // realistic people (Rocketbox avatars + motion capture), streamed in one by one; mannequins stay until each arrives
+  await loadPeople(tick);
+  // animation library (Mixamo rig) for any extra user-supplied models in REAL_MODELS
   const entries = Object.entries(REAL_MODELS);
   if (entries.length) {
     ASSETS.bot = await loadGLB('Xbot.glb');
@@ -95,11 +97,25 @@ async function loadAssets(onProgress) {
   return ASSETS.ready;
 }
 function applyRealModel(id, m) {
-  if (!CAST[id]) return;
-  CAST[id].spec.real = id;
-  const n = NPCS[id];
-  if (n) { const old = n.char, vis = old.root.visible; n.char = new RealCharacter(m, CAST[id].spec); scene.add(n.char.root); n.char.root.visible = vis; if (n.ghost) n.char.setOpacity(.92); old.dispose(); }
-  if (Game.state === 'play' && Game.role === id && !Player.car) { const p = Player.pos.clone(), y = Player.yaw; setPlayerChar(CAST[id].spec); Player.char.root.position.copy(p); Player.char.root.rotation.y = y; }
+  if (CAST[id]) CAST[id].spec.real = id;
+  // every NPC built from this spec (story cast, students, the menu girl) swaps to the realistic body
+  for (const n of NPCList) {
+    if ((n.def.spec.real || n.id) !== id || n.char.real) continue;
+    n.def.spec.real = id;
+    const old = n.char, vis = old.root.visible; n.char = makeCharacter(n.def.spec); scene.add(n.char.root); n.char.root.visible = vis;
+    n.char.root.position.copy(old.root.position); n.char.root.rotation.y = old.root.rotation.y;
+    if (n.id === 'ghost') n.char.setOpacity(.92); old.dispose();
+  }
+  upgradePlayerChar();
+  if (typeof preview !== 'undefined' && preview && !preview.real && preview.spec.real === id) setPreview(preview.spec);
+  if (Game.state === 'custom' && /^custom_/.test(id)) refreshCustom();
+  void m;
+}
+// swap the player's mannequin for the realistic body once it has loaded (not while driving)
+function upgradePlayerChar() {
+  const ch = Player.char; if (!ch || ch.real || Player.car || Game.state !== 'play') return;
+  const spec = specFor(Game.role); if (!spec.real || !ASSETS.models[spec.real]) return;
+  const p = Player.pos.clone(), y = Player.yaw, vis = ch.root.visible; setPlayerChar(spec); Player.char.root.position.copy(p); Player.char.root.rotation.y = y; Player.char.root.visible = vis;
 }
 // Give a loaded rig its own copies of the shared animation library.
 function prepareModel(model) {
@@ -124,7 +140,7 @@ function recolorTerrain(photo) {
 /* ---------- rigged, animated characters (any Mixamo-rigged glTF) ---------- */
 class RealCharacter {
   constructor(gltf, spec = {}) {
-    this.spec = Object.assign({ fem: true, height: 1 }, spec); this.real = true;
+    this.spec = Object.assign({ fem: true, height: 1 }, spec); this.real = true; this.baseScale = 1;
     this.root = new THREE.Group(); this.mode = 'idle'; this.speed = 0; this.dance = 0; this.t = 0; this.phase = 0;
     const model = SkeletonUtils.clone(gltf.scene);
     model.updateMatrixWorld(true);
@@ -170,5 +186,109 @@ class RealCharacter {
         if (this.mode === 'drive') for (const sd of ['Left', 'Right']) { turn(B[sd + 'Arm'], -.9); turn(B[sd + 'ForeArm'], -.4); }
       } else turn(B.Head, .5);
     }
+  }
+}
+
+/* ---------- realistic people: Microsoft Rocketbox avatars (MIT) with Rocketbox motion capture ---------- */
+// assets/people/<id>.glb, converted from the Rocketbox FBX files; anims_f / anims_m hold the shared clips.
+const PEOPLE_IDS = ['anya', 'elise', 'steven', 'coach', 'nora', 'marisol', 'bridget', 'tasha', 'father', 'ruth', 'pruitt', 'dale', 'ghost',
+  'kevin', 'lauren', 'marcus', 'priya', 'danny', 'jen', 'tom', 'sofia', 'custom_f', 'custom_m'];
+const PEOPLE_MALE = new Set(['steven', 'father', 'dale', 'pruitt', 'kevin', 'marcus', 'danny', 'tom', 'custom_m']);
+const PEOPLE_GAIT = { f: { walk: 1.21, run: 2.77 }, m: { walk: 1.01, run: 2.88 } }; // metres per second the clips were captured at
+async function loadPeople(tick) {
+  const [af, am] = await Promise.all([loadGLB('people/anims_f.glb'), loadGLB('people/anims_m.glb')]);
+  tick(); tick();
+  if (!af || !am) { PEOPLE_IDS.forEach(() => tick()); return; }
+  ASSETS.anims = { f: af.animations, m: am.animations };
+  // the player's own character first, then whoever is on screen, then everyone else
+  const first = Game.role ? [Game.role === 'custom' ? 'custom_' + (Game.custom?.build || 'f') : Game.role] : [];
+  const order = [...new Set([...first, ...PEOPLE_IDS])];
+  for (const id of order) {
+    const g = await loadGLB('people/' + id + '.glb'); tick();
+    if (!g) continue;
+    ASSETS.models[id] = preparePerson(g, PEOPLE_MALE.has(id) ? 'm' : 'f');
+    applyRealModel(id, ASSETS.models[id]);
+    await new Promise(r => setTimeout(r, 0));
+  }
+}
+// Give one avatar its copies of the clips: the hip-height track is rescaled to this body, everything else is shared.
+function preparePerson(gltf, sex) {
+  const hips = gltf.scene.getObjectByName('Bip01'); const restY = hips ? hips.position.y : 92;
+  const src = ASSETS.anims[sex], ref = (src.find(c => c.name === 'idle') || src[0]).tracks.find(t => t.name === 'Bip01.position');
+  const refY = ref ? ref.values[1] : restY, k = restY / refY;
+  const clips = {};
+  for (const c of src) clips[c.name] = new THREE.AnimationClip(c.name, c.duration, c.tracks.filter(t => /^Bip01/.test(t.name)).map(t => {
+    if (t.name !== 'Bip01.position') return t;
+    const v = t.values.slice(); for (let i = 1; i < v.length; i += 3) v[i] *= k; return new THREE.VectorKeyframeTrack(t.name, t.times, v);
+  }));
+  return { rb: true, scene: gltf.scene, clips, sex, gait: PEOPLE_GAIT[sex] };
+}
+class PersonCharacter {
+  constructor(entry, spec = {}) {
+    this.spec = Object.assign({ fem: entry.sex === 'f', height: 1 }, spec); this.real = true; this.baseScale = 1;
+    this.root = new THREE.Group(); this.mode = 'idle'; this.speed = 0; this.dance = 0; this.t = Math.random() * 20; this.phase = 0; this.look = 0;
+    this.gait = entry.gait;
+    const model = SkeletonUtils.clone(entry.scene);
+    model.scale.setScalar(.01 * (this.spec.height || 1)); // Rocketbox works in centimetres
+    this.mats = [];
+    const ghost = spec.outfit === 'ghost';
+    model.traverse(o => {
+      if (!o.isMesh) return;
+      o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
+      o.material = (Array.isArray(o.material) ? o.material : [o.material]).map(m => {
+        const c = m.clone();
+        if (c.map) c.map.anisotropy = maxAniso;
+        if (/opacity/i.test(c.name)) { c.transparent = false; c.alphaTest = .42; c.alphaToCoverage = true; c.side = THREE.DoubleSide; } // hair cards
+        if (ghost) { c.color.set(/opacity/i.test(c.name) ? '#1a1a1e' : '#8c96a2'); c.emissive = new THREE.Color('#2c3646'); c.emissiveIntensity = .45; c.roughness = .25; }
+        this.mats.push(c); return c;
+      });
+      if (o.material.length === 1) o.material = o.material[0];
+    });
+    this.root.add(model); this.model = model;
+    this.bones = {}; model.traverse(o => { if (o.isBone) this.bones[o.name] = o; });
+    this.mixer = new THREE.AnimationMixer(model); this.actions = {}; this.w = {};
+    for (const [k, clip] of Object.entries(entry.clips)) {
+      const a = this.mixer.clipAction(clip); a.play(); a.time = Math.random() * clip.duration; a.setEffectiveWeight(k === 'idle' ? 1 : 0); this.actions[k] = a; this.w[k] = k === 'idle' ? 1 : 0;
+    }
+    this.lookT = 6 + Math.random() * 14; this.looking = 0;
+    this.root.traverse(m => { if (m.isMesh) m.userData.char = this; });
+  }
+  setOpacity(a) { for (const m of this.mats) { m.transparent = a < 1; m.opacity = a; m.depthWrite = true; } }
+  dispose() { this.root.removeFromParent(); this.mixer.stopAllAction(); this.mats.forEach(m => m.dispose()); }
+  update(dt) {
+    this.t += dt; const s = this.speed, G = this.gait;
+    if (s > .05) this.phase += dt * (3.2 + s * 1.35);
+    const want = { idle: 0, look: 0, walk: 0, run: 0, talk: 0, dance: 0, sit: 0, sad: 0 };
+    const seated = this.mode === 'sit' || this.mode === 'drive';
+    if (this.mode === 'dance') want.dance = 1;
+    else if (this.mode === 'ghost') want.sad = 1;
+    else if (this.mode === 'talk') want.talk = 1;
+    else if (seated) want.sit = 1;
+    else if (this.mode === 'jump') want.run = 1;
+    else {
+      const r = clamp((s - .12) / .5, 0, 1), q = clamp((s - 1.7) / 1.1, 0, 1);
+      want.walk = r * (1 - q); want.run = r * q;
+      // now and then an idle person glances around
+      if (r < .05) { this.lookT -= dt; if (this.lookT <= 0 && this.actions.look) { this.looking = this.actions.look.getClip().duration; this.actions.look.time = 0; this.lookT = 10 + Math.random() * 18; } } else this.looking = 0;
+      if (this.looking > 0) this.looking -= dt;
+      const lk = this.looking > .4 ? 1 : 0;
+      want.look = (1 - r) * lk; want.idle = (1 - r) * (1 - lk);
+    }
+    for (const [k, a] of Object.entries(this.actions)) { this.w[k] = damp(this.w[k], want[k] || 0, k === 'walk' || k === 'run' ? 10 : 6, dt); a.setEffectiveWeight(this.w[k]); }
+    if (this.actions.walk) this.actions.walk.timeScale = clamp(s / G.walk, .55, 1.9);
+    if (this.actions.run) this.actions.run.timeScale = this.mode === 'jump' ? .6 : clamp(s / G.run, .7, 2.3);
+    if (this.actions.dance) this.actions.dance.timeScale = 1;
+    this.mixer.update(dt);
+    // the sit clip carries the pelvis at chair height; line it up with the game's seats
+    this.model.position.y = damp(this.model.position.y, seated ? -.1 : 0, 10, dt);
+    if (this.mode === 'drive') this.reach();
+  }
+  // hands on the wheel: swing both arms forward around the character's own side axis
+  reach() {
+    const B = this.bones; if (!B.Bip01_L_UpperArm) return;
+    this.model.updateMatrixWorld(true);
+    const ax = new THREE.Vector3(1, 0, 0).applyQuaternion(this.root.getWorldQuaternion(new THREE.Quaternion()));
+    const turn = (bone, ang) => { if (!bone) return; const pq = bone.parent.getWorldQuaternion(new THREE.Quaternion()); const r = new THREE.Quaternion().setFromAxisAngle(ax, ang); bone.quaternion.premultiply(pq.clone().invert().multiply(r).multiply(pq)); bone.updateMatrixWorld(true); };
+    for (const sd of ['L', 'R']) { turn(B['Bip01_' + sd + '_UpperArm'], -.75); turn(B['Bip01_' + sd + '_Forearm'], -.35); }
   }
 }

@@ -423,7 +423,9 @@ function buildChapel(B) {
   for (let i = 0; i < 5; i++) for (const s of [-1, 1]) B.box(1.0, 6.5, 1.1, MAT.stone, x - 12 + i * 6, 3.25, z + s * (d / 2 + .45), 0, 2);
   // gable ends (fill the triangle under the roof)
   const tri = new THREE.Shape(); tri.moveTo(-d / 2 - .3, 0); tri.lineTo(d / 2 + .3, 0); tri.lineTo(0, 7.5); tri.lineTo(-d / 2 - .3, 0);
-  const tg = scaleUV(new THREE.ShapeGeometry(tri), .6); const triMat = MAT.stone.clone(); triMat.side = THREE.DoubleSide; for (const sx of [-1, 1]) { const m = new THREE.Mesh(tg, triMat); m.position.set(x + sx * (w / 2 + .01), h, z); m.rotation.y = sx > 0 ? Math.PI / 2 : -Math.PI / 2; m.castShadow = true; World.group.add(m); }
+  // the roof prism overhangs the end walls by .7, so its end caps sit at gx; the gable face and rose windows go just in front of them
+  const gx = w / 2 + .6 / 2 + .7;
+  const tg = scaleUV(new THREE.ShapeGeometry(tri), .6); const triMat = MAT.stone.clone(); triMat.side = THREE.DoubleSide; for (const sx of [-1, 1]) { const m = new THREE.Mesh(tg, triMat); m.position.set(x + sx * (gx + .03), h, z); m.rotation.y = sx > 0 ? Math.PI / 2 : -Math.PI / 2; m.castShadow = true; World.group.add(m); }
   // stained glass
   const sg = new THREE.PlaneGeometry(1.6, 4.2);
   for (let i = 0; i < 5; i++) for (const s of [-1, 1]) {
@@ -432,9 +434,9 @@ function buildChapel(B) {
     B.add(sg, MAT.stainedOut, M(px, 4.4, z + s * (d / 2 + .31), ry));
     B.add(sg, MAT.stainedIn, M(px, 4.4, z + s * (d / 2 - .31), ry + Math.PI));
   }
-  B.add(new THREE.CircleGeometry(2.4, 32), MAT.roseOut, M(x - w / 2 - .31, 11, z, -Math.PI / 2));
+  B.add(new THREE.CircleGeometry(2.4, 32), MAT.roseOut, M(x - gx - .07, 11, z, -Math.PI / 2));
   B.add(new THREE.CircleGeometry(2.4, 32), MAT.roseIn, M(x - w / 2 + .31, 7.2, z, Math.PI / 2));
-  B.add(new THREE.CircleGeometry(1.6, 32), MAT.roseOut, M(x + w / 2 + .31, 11.2, z, Math.PI / 2));
+  B.add(new THREE.CircleGeometry(1.6, 32), MAT.roseOut, M(x + gx + .07, 11.2, z, Math.PI / 2));
   // door + porch
   B.box(.25, 4.6, 3.6, MAT.stone, x + w / 2 + .3, 2.3, z - 2.0); B.box(.25, 4.6, .6, MAT.stone, x + w / 2 + .3, 2.3, z + 1.8);
   B.box(.6, .8, 4.4, MAT.stone, x + w / 2 + .35, 5, z, 0, 2);
