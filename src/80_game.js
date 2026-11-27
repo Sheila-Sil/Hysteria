@@ -120,7 +120,7 @@ function chatterFor(npc) {
 const P = PLACES;
 const SPOT = {
   gymCoach: [69, 1, -Math.PI / 2], gymMe: [61, 1, Math.PI / 2],
-  dancers: [[59, -1.8], [59, 3.8], [57, -3.8], [57, 5.8]],
+  dancers: [[59, -1.8], [59, 3.8], [57, -3.8], [57, 5.8], [57, 1]],
   boathouse: [43.6, -206.4, -Math.PI / 2], dockEnd: [61.5, -206],
   booth: [-146.9, 158.4, -Math.PI / 2], fatherAltar: [-72, 0, Math.PI / 2], chapelSteps: [-44, 1.4, Math.PI / 2], hallSteps: [3, -23.4, 0],
   quadAnya: [10, 4, -Math.PI / 2], parkSteven: [-40.5, 64.5, -.6], bleacherSit: [74, 57.85, 0]
@@ -310,7 +310,7 @@ const MISSIONS = {
     { title: 'Evidence', blurb: 'Ruth has a theory: the strange stuff only shows up on tape.', hour: 18.3, spawn: [0, 40, Math.PI],
       cast: N => { N.ruth.place(...SPOT.hallSteps); }, anomalies: true,
       obj: [
-        { type: 'photo', anomalies: true, targets: [{ x: 70, y: 2.6, z: 57.85, label: 'the figure on the bleachers' }, { x: -45.7, y: 11.2, z: 0, label: 'the chapel window' }, { x: 0, y: .8, z: 0, label: 'the fountain' }], text: 'Film the anomalies. They only appear through the camcorder.' },
+        { type: 'photo', anomalies: true, targets: [{ x: 70, y: 2.6, z: 57.85, label: 'the figure on the bleachers' }, { x: -44.9, y: 11.2, z: 0, label: 'the chapel window' }, { x: 0, y: .8, z: 0, label: 'the fountain' }], text: 'Film the anomalies. They only appear through the camcorder.' },
         { type: 'talk', npc: 'ruth', text: 'Show Ruth the tape', dlg: [
           ['ruth', 'Let me see.'], ['narr', "She watches it twice. The second time she turns the sound up. Under the hiss there's breathing that isn't yours."],
           ['ruth', "Okay. We're not printing that. Nobody would believe it. I don't believe it and I'm looking at it."],
@@ -396,7 +396,7 @@ function makeRing(x, z) {
 const Anomaly = { list: [], on: false };
 function buildAnomalies() {
   const sil = canvasTex(128, 256, (g, w, h) => { g.fillStyle = 'rgba(0,0,0,0)'; g.fillRect(0, 0, w, h); g.fillStyle = '#ff2a2a'; g.beginPath(); g.ellipse(64, 60, 22, 28, 0, 0, TAU); g.fill(); g.beginPath(); g.moveTo(30, 250); g.quadraticCurveTo(26, 120, 64, 92); g.quadraticCurveTo(102, 120, 98, 250); g.fill(); }, { repeat: false });
-  const win = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.8), new THREE.MeshBasicMaterial({ map: sil, transparent: true, color: 0xffffff, depthWrite: false })); win.position.set(-45.64, 11.2, 0); win.rotation.y = Math.PI / 2; win.visible = false; scene.add(win);
+  const win = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.8), new THREE.MeshBasicMaterial({ map: sil, transparent: true, color: 0xffffff, depthWrite: false })); win.position.set(-44.88, 11.2, 0); /* in front of the east rose window, on the roof's end cap */ win.rotation.y = Math.PI / 2; win.visible = false; scene.add(win);
   Anomaly.window = win;
   Anomaly.redWater = new THREE.MeshStandardMaterial({ color: 0x5a0606, roughness: .08, metalness: .1, normalMap: TEX.water, emissive: 0x3a0000, emissiveIntensity: .6 });
 }
@@ -528,10 +528,10 @@ const Missions = {
     Game.busy = true; Player.frozen = true;
     const sp = SPOT.gymMe; placePlayer(sp[0], sp[1], sp[2]);
     const dancers = ['marisol', 'bridget', 'tasha', 'nora', 'anya'].map(k => NPCS[k]).filter(n => n.visible && Math.hypot(n.pos.x - 60, n.pos.z) < 12);
-    dancers.forEach((n, i) => { const d = SPOT.dancers[i % 4]; n.place(d[0], d[1], Math.PI / 2); n.dancing = true; });
-    letterbox(true);
+    dancers.forEach((n, i) => { const d = SPOT.dancers[i % SPOT.dancers.length]; n.place(d[0], d[1], Math.PI / 2); n.dancing = true; });
+    letterbox(true); Player.dancing = true;
     const res = await Rhythm.play(o.diff);
-    dancers.forEach(n => n.dancing = false);
+    dancers.forEach(n => n.dancing = false); Player.dancing = false;
     letterbox(false); camRelease(); Player.char.mode = 'idle';
     Game.busy = false; Player.frozen = false;
     if (res.pass) { toast(`Routine: ${Math.round(res.acc * 100)}% · ${res.acc > .9 ? 'Perfect' : res.acc > .75 ? 'Sharp' : 'Good enough'}`); this.next(); }
@@ -637,6 +637,7 @@ const Rhythm = {
         if (diff > 1 && r() < .38) notes.push({ t: t0 + (b + .5) * spb, lane: (lane + 2) % 4, hit: false, judged: false });
       }
       const st = { score: 0, combo: 0, good: 0, total: notes.length, flash: [0, 0, 0, 0], judge: '', judgeT: 0 };
+      Rhythm.cur = { notes, now };
       const cv = $('#rh-canvas'); $('#rhythm').hidden = false; $('#rh-title').textContent = Game.role === 'anya' ? 'Lead the routine' : 'The routine';
       const dpr = Math.min(2, devicePixelRatio || 1); cv.width = cv.clientWidth * dpr; cv.height = cv.clientHeight * dpr; const g = cv.getContext('2d');
       const keys = [['ArrowLeft', 'KeyD'], ['ArrowDown', 'KeyF'], ['ArrowUp', 'KeyJ'], ['ArrowRight', 'KeyK']];
@@ -646,12 +647,15 @@ const Rhythm = {
         if (best) { best.judged = true; best.hit = true; const q = bd < .07 ? 'Perfect' : 'Good'; st.score += q === 'Perfect' ? 300 : 120; st.combo++; st.good += q === 'Perfect' ? 1 : .7; st.judge = q; st.judgeT = .5; AudioFX.tone(q === 'Perfect' ? 1318 : 988, .08, { gain: .03, bus: 'ui' }); }
       };
       const tap = e => { const r = cv.getBoundingClientRect(); const ln = clamp(Math.floor((e.clientX - r.left) / r.width * 4), 0, 3); press(ln); };
+      // listen to the keyboard directly: the main loop clears Input.pressed before this frame callback runs,
+      // so polling Input.hit() here never saw a key press and every routine failed
+      const onKey = e => { if (e.repeat) return; const ln = keys.findIndex(k => k.includes(e.code)); if (ln >= 0) { e.preventDefault(); press(ln); } };
+      addEventListener('keydown', onKey);
       cv.style.pointerEvents = 'auto'; cv.addEventListener('pointerdown', tap);
       const ch = Player.char; const orbit = { a: Player.yaw + 2.4 };
       let last = performance.now();
       const frame = () => {
         const tn = now(); const nowMs = performance.now(); const dt = Math.min(.05, (nowMs - last) / 1000); last = nowMs;
-        for (let ln = 0; ln < 4; ln++) for (const k of keys[ln]) if (Input.hit(k)) press(ln);
         if (Game.autoRhythm) for (const n of notes) if (!n.judged && tn >= n.t - .05) { n.judged = n.hit = true; st.score += 300; st.combo++; st.good++; }
         for (const n of notes) if (!n.judged && tn - n.t > .2) { n.judged = true; st.combo = 0; st.judge = 'Miss'; st.judgeT = .5; }
         const beat = (tn - t0) / spb;
@@ -681,7 +685,7 @@ const Rhythm = {
         $('#rh-score').textContent = st.score; $('#rh-combo').textContent = st.combo > 3 ? `${st.combo} combo` : (tn < t0 + 8 * spb ? `${Math.max(1, Math.ceil((t0 + 8 * spb - tn) / spb))}` : '');
         st.judgeT -= dt; const j = $('#rh-judge'); j.textContent = st.judgeT > 0 ? st.judge : ''; j.style.color = st.judge === 'Miss' ? '#a3272a' : '';
         if (tn > lastT + 1.2) {
-          cv.removeEventListener('pointerdown', tap); cv.style.pointerEvents = 'none'; $('#rhythm').hidden = true; AudioFX.stopSong();
+          cv.removeEventListener('pointerdown', tap); removeEventListener('keydown', onKey); cv.style.pointerEvents = 'none'; $('#rhythm').hidden = true; AudioFX.stopSong();
           const acc = st.total ? st.good / st.total : 1; resolve({ pass: acc >= .55, acc }); return;
         }
         requestAnimationFrame(frame);

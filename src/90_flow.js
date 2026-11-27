@@ -156,8 +156,8 @@ async function toTitle() {
 /* ============================== character select ============================== */
 let selRole = 'anya', preview = null;
 const SEL_ORDER = ['anya', 'elise', 'steven', 'custom'];
-function customSpec() { const c = Game.custom || defaultCustom(); if (c.look === 'photo' && ASSETS.models.photoreal) return { real: 'photoreal', fem: true, height: 1 }; return { fem: c.build === 'f', skin: c.skin, hair: c.hair, hairCol: c.hairCol, outfit: c.outfit, accent: c.accent, eye: '#3a2a1e', height: c.build === 'f' ? 1 : .98 }; }
-function defaultCustom() { return { name: 'Sam Doyle', build: 'f', skin: SKINS[2], hair: 'bob', hairCol: HAIRS[2], outfit: 'hoodie', accent: ACCENTS[3] }; }
+function customSpec() { const c = Game.custom || defaultCustom(); const rid = 'custom_' + (c.build === 'm' ? 'm' : 'f'); if (c.look !== 'stylized' && ASSETS.models[rid]) return { real: rid, fem: c.build !== 'm', height: 1 }; return { fem: c.build === 'f', skin: c.skin, hair: c.hair, hairCol: c.hairCol, outfit: c.outfit, accent: c.accent, eye: '#3a2a1e', height: c.build === 'f' ? 1 : .98 }; }
+function defaultCustom() { return { name: 'Sam Doyle', look: 'photo', build: 'f', skin: SKINS[2], hair: 'bob', hairCol: HAIRS[2], outfit: 'hoodie', accent: ACCENTS[3] }; }
 function specFor(role) { return role === 'custom' ? customSpec() : CAST[role].spec; }
 function setPreview(spec) {
   if (preview) preview.dispose();
@@ -193,9 +193,10 @@ function seg(el, opts, cur, cb) { el.innerHTML = ''; for (const [v, label] of op
 function sw(el, cols, cur, cb) { el.innerHTML = ''; for (const c of cols) { const b = document.createElement('button'); b.style.background = c; b.title = c; b.setAttribute('aria-label', c); b.classList.toggle('on', c === cur); b.addEventListener('click', () => { cb(c); AudioFX.ui(); }); el.appendChild(b); } }
 function buildCustomUI() {
   const c = Game.custom;
-  seg($('#c-look'), [['stylized', 'Custom'], ['photo', 'Imported model']], c.look || 'stylized', v => { if (v === 'photo' && !ASSETS.ready) return; c.look = v; refreshCustom(); });
-  $('#c-look').parentElement.hidden = !ASSETS.models.photoreal; if (!ASSETS.models.photoreal) c.look = 'stylized';
-  $$('.cust-stylized').forEach(e => e.hidden = c.look === 'photo');
+  const realOK = !!(ASSETS.models.custom_f && ASSETS.models.custom_m);
+  seg($('#c-look'), [['photo', 'Realistic'], ['stylized', 'Stylized']], c.look === 'stylized' || !realOK ? 'stylized' : 'photo', v => { c.look = v; refreshCustom(); });
+  $('#c-look').parentElement.hidden = !realOK;
+  $$('.cust-stylized').forEach(e => e.hidden = realOK && c.look !== 'stylized');
   seg($('#c-build'), [['f', 'Build A'], ['m', 'Build B']], c.build, v => { c.build = v; refreshCustom(); });
   sw($('#c-skin'), SKINS, c.skin, v => { c.skin = v; refreshCustom(); });
   seg($('#c-hair'), [['long', 'Long'], ['ponytail', 'Ponytail'], ['bob', 'Bob'], ['bun', 'Bun'], ['curly', 'Curls'], ['short', 'Short'], ['buzz', 'Buzz']], c.hair, v => { c.hair = v; refreshCustom(); });
@@ -350,7 +351,7 @@ async function boot() {
     loadAssets(p => { foot.textContent = `Loading HD textures and models · ${Math.round(p * 100)}%`; if (Game.state === 'custom') buildCustomUI(); })
       .then(ok => { foot.textContent = ok ? 'Unofficial fan project · HD assets loaded' : 'Unofficial fan project · HD assets unavailable'; if (Game.state === 'custom') buildCustomUI(); })
       .catch(e => { console.warn('asset load failed', e); foot.textContent = 'Unofficial fan project'; });
-    window.__hysteria = { get focus() { return focusTarget; }, get preview() { return preview; }, enterCar, exitCar, Vision, Guard, Game, Missions, Player, NPCS, World, TOD, setHour, placePlayer, Input, Cam, settings, applyQuality, showEnding, startFree, togglePhoto };
+    window.__hysteria = { get focus() { return focusTarget; }, get preview() { return preview; }, enterCar, exitCar, Vision, Guard, Game, Missions, Player, NPCS, World, TOD, setHour, placePlayer, Input, Cam, settings, applyQuality, showEnding, startFree, togglePhoto, Rhythm, Anomaly, scene };
   } catch (err) {
     console.error(err); txt.textContent = 'Something went wrong while building the world. Try reloading, or lower graphics in a newer browser.';
   }

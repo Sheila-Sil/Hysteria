@@ -162,7 +162,7 @@ class Car {
 
 /* ============================== player ============================== */
 const Player = { char: null, pos: new THREE.Vector3(0, 0, 20), vel: new THREE.Vector3(), yaw: Math.PI, vy: 0, grounded: true, car: null, stepPh: 0, frozen: false, sprint: 0, inside: null };
-function makeCharacter(spec) { const m = spec.real && ASSETS.models[spec.real]; return m ? new RealCharacter(m, spec) : new Character(spec); }
+function makeCharacter(spec) { const m = spec.real && ASSETS.models[spec.real]; return m ? (m.rb ? new PersonCharacter(m, spec) : new RealCharacter(m, spec)) : new Character(spec); }
 function setPlayerChar(spec) {
   if (Player.char) Player.char.dispose();
   Player.char = makeCharacter(spec); scene.add(Player.char.root);
@@ -180,13 +180,14 @@ function enterCar(v) {
 function exitCar(force = false) {
   const v = Player.car; if (!v) return;
   if (!force && Math.abs(v.speed) > 4) return;
-  const ch = Player.char; scene.add(ch.root); ch.root.scale.setScalar(ch.spec.height * (ch.spec.fem ? 1 : 1.06)); ch.mode = 'idle';
+  const ch = Player.char; scene.add(ch.root); ch.root.scale.setScalar(ch.baseScale ?? 1); ch.mode = 'idle';
   const lx = Math.cos(v.yaw), lz = -Math.sin(v.yaw);
   Player.pos.set(v.pos.x + lx * 1.7, 0, v.pos.z + lz * 1.7);
   const p = { x: Player.pos.x, z: Player.pos.z }; resolveCircle(p, .35, v.pos.y, 1.7); Player.pos.x = p.x; Player.pos.z = p.z; Player.pos.y = groundAt(p.x, p.z);
   Player.yaw = v.yaw; v.driver = null; Player.car = null; v.speed *= .3; v.lights(false);
   AudioFX.setEngine(false); World.spotCar.intensity = 0;
   AudioFX.noise(.15, { freq: 300, q: 1, gain: .3 });
+  upgradePlayerChar();
 }
 function updatePlayer(dt) {
   const ch = Player.char; if (!ch) return;
@@ -228,7 +229,7 @@ function updatePlayer(dt) {
   else Player.grounded = false;
   const hs = Math.hypot(Player.vel.x, Player.vel.z);
   if (hs > .3) Player.yaw = dampAngle(Player.yaw, Math.atan2(Player.vel.x, Player.vel.z), 12, dt);
-  ch.speed = hs; ch.mode = Player.grounded ? 'walk' : 'jump';
+  ch.speed = hs; ch.mode = Player.dancing ? 'dance' : Player.grounded ? 'walk' : 'jump';
   if (Game.talking) ch.mode = 'talk';
   ch.root.position.copy(p); ch.root.rotation.y = Player.yaw;
   // footsteps
